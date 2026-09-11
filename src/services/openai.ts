@@ -1,7 +1,9 @@
-// OpenAI Responses API integration for Position Profile AI conversation
+// OpenAI integration for Position Profile AI conversation.
+// All calls go through our own /api/openai serverless proxy — the
+// browser never talks to api.openai.com directly, and never sees
+// the API key (it lives server-side as OPENAI_API_KEY in Vercel).
 
-const API_URL = 'https://api.openai.com/v1/responses';
-const CHAT_API_URL = 'https://api.openai.com/v1/chat/completions';
+const PROXY_URL = '/api/openai';
 const PRIMARY_MODEL = 'gpt-6-astra';
 const FALLBACK_MODELS = ['gpt-4o', 'gpt-4o-mini'];
 
@@ -10,18 +12,20 @@ async function callChat(
   model: string,
   systemPrompt: string,
   userPrompt: string,
-  apiKey: string,
 ): Promise<string> {
-  const res = await fetch(CHAT_API_URL, {
+  const res = await fetch(PROXY_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0.3,
+      endpoint: 'chat',
+      payload: {
+        model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.3,
+      },
     }),
   });
   if (!res.ok) {
@@ -39,12 +43,11 @@ async function callChat(
 async function callChatWithFallback(
   systemPrompt: string,
   userPrompt: string,
-  apiKey: string,
   models = ['gpt-4o-mini', 'gpt-4o'],
 ): Promise<string | null> {
   for (const model of models) {
     try {
-      const result = await callChat(model, systemPrompt, userPrompt, apiKey);
+      const result = await callChat(model, systemPrompt, userPrompt);
       return result;
     } catch (e) {
       console.warn(`[openai] ${model} chat failed:`, e);
@@ -224,18 +227,15 @@ function buildInput(messages: ConversationMessage[], positionContext: string) {
 
 // ─── Main API call ─────────────────────────────────────────────────────────────
 
-async function callAPI(model: string, input: object[], apiKey: string, instructions?: string): Promise<string> {
+async function callAPI(model: string, input: object[], instructions?: string): Promise<string> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const body: Record<string, any> = { model, input, store: instructions !== undefined };
-  if (instructions !== undefined) body.instructions = instructions;
+  const payload: Record<string, any> = { model, input, store: instructions !== undefined };
+  if (instructions !== undefined) payload.instructions = instructions;
 
-  const res = await fetch(API_URL, {
+  const res = await fetch(PROXY_URL, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ endpoint: 'responses', payload }),
   });
 
   if (!res.ok) {
@@ -278,23 +278,13 @@ export async function sendConversationMessage(
   messages: ConversationMessage[],
   positionContext: string,
 ): Promise<AIResponse> {
-  const apiKey = import.meta.env.VITE_OPENAI_API_KEY as string;
-
-  if (!apiKey) {
-    return {
-      conversationalText: 'API key not configured. Please add VITE_OPENAI_API_KEY to your .env.local file.',
-      profileState: null,
-      error: 'missing_key',
-    };
-  }
-
   const input = buildInput(messages, positionContext);
 
   let rawText: string | undefined;
   let lastErr = '';
   for (const model of [PRIMARY_MODEL, ...FALLBACK_MODELS]) {
     try {
-      rawText = await callAPI(model, input, apiKey, SYSTEM_PROMPT);
+      rawText = await callAPI(model, input, SYSTEM_PROMPT);
       console.info(`[openai] success with model: ${model}`);
       break;
     } catch (err) {
@@ -320,9 +310,6 @@ export async function generateAssessmentQuestions(
   candidateCVSummary: string,
   positionProfile: string,
 ): Promise<Array<{ skill: string; cvClaim: string; question: string }> | null> {
-  const apiKey = import.meta.env.VITE_OPENAI_API_KEY as string;
-  if (!apiKey) return null;
-
   const prompt = `You are generating a technical assessment for a candidate applying for a role.
 
 Position Profile:
@@ -351,7 +338,6 @@ Return JSON only (no markdown):
     const rawText = await callAPI(
       PRIMARY_MODEL,
       [{ role: 'user', content: prompt }],
-      apiKey,
     );
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
@@ -393,9 +379,6 @@ export async function generatePositionQuestions(
   positionTitle: string,
   requirements: Array<{ name: string; importance: string; description: string }>,
 ): Promise<AssessmentQuestion[] | null> {
-  const apiKey = import.meta.env.VITE_OPENAI_API_KEY as string;
-  if (!apiKey) return null;
-
   const reqList = requirements
     .slice(0, 8)
     .map(r => `- ${r.name} (${r.importance}): ${r.description}`)
@@ -424,7 +407,7 @@ Return valid JSON only, no markdown fences:
 }`;
 
   try {
-    const raw = await callChatWithFallback('You are an expert technical interviewer. Return only valid JSON, no code fences.', prompt, apiKey);
+    const raw = await callChatWithFallback('You are an expert technical interviewer. Return only valid JSON, no code fences.', prompt);
     if (!raw) return null;
     const m = raw.match(/\{[\s\S]*\}/);
     if (m) {
@@ -443,9 +426,6 @@ export async function evaluateAnswers(
   positionTitle: string,
   questionsAndAnswers: Array<{ question: AssessmentQuestion; answer: string }>,
 ): Promise<{ results: AnswerResult[]; overallScore: number } | null> {
-  const apiKey = import.meta.env.VITE_OPENAI_API_KEY as string;
-  if (!apiKey) return null;
-
   const qa = questionsAndAnswers.map((qa, i) =>
     `Question ${i + 1} (${qa.question.skill}):\n${qa.question.question}\n\nAnswer:\n${qa.answer || '(no answer provided)'}`
   ).join('\n\n---\n\n');
@@ -477,7 +457,7 @@ Return valid JSON only, no markdown:
 }`;
 
   try {
-    const raw = await callChatWithFallback('You are an expert technical interviewer evaluating candidate responses. Return only valid JSON, no code fences.', prompt, apiKey);
+    const raw = await callChatWithFallback('You are an expert technical interviewer evaluating candidate responses. Return only valid JSON, no code fences.', prompt);
     if (!raw) return null;
     const m = raw.match(/\{[\s\S]*\}/);
     if (m) {
@@ -507,8 +487,7 @@ export async function scoreCVAgainstPosition(
   requirements: Array<{ id: string; name: string; importance: string; weight: number; description: string }>,
 ): Promise<CVScoringResult> {
   const empty: CVScoringResult = { score: 0, evidence: [] };
-  const apiKey = import.meta.env.VITE_OPENAI_API_KEY as string;
-  if (!apiKey || !cvText.trim() || requirements.length === 0) return empty;
+  if (!cvText.trim() || requirements.length === 0) return empty;
 
   const reqList = requirements
     .map(r => `- id="${r.id}" name="${r.name}" importance=${r.importance} weight=${r.weight}: ${r.description}`)
@@ -545,7 +524,7 @@ Return this exact JSON structure (no extra keys, no markdown):
 }`;
 
   try {
-    const raw = await callChatWithFallback(system, user, apiKey);
+    const raw = await callChatWithFallback(system, user);
     if (!raw) return empty;
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
@@ -571,9 +550,6 @@ export async function generateJobDescription(
   responsibilities: string[],
   requirements: Array<{ name: string; importance: string; description: string }>,
 ): Promise<string | null> {
-  const apiKey = import.meta.env.VITE_OPENAI_API_KEY as string;
-  if (!apiKey) return null;
-
   const respList = responsibilities.map(r => `- ${r}`).join('\n');
   const reqList = requirements.map(r => `- **${r.name}** (${r.importance}): ${r.description}`).join('\n');
 
@@ -601,7 +577,7 @@ Use these markdown sections:
 
 Use [Company Name] as a placeholder. Under 600 words. No code fences, no preamble — start directly with the first section heading.`;
 
-  const raw = await callChatWithFallback(system, user, apiKey);
+  const raw = await callChatWithFallback(system, user);
   if (!raw) return null;
   // Strip any accidental markdown code fences the model may still add
   return raw.replace(/^```[\w]*\n?/gm, '').replace(/^```\s*$/gm, '').trim();
