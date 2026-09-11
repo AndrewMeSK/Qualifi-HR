@@ -1,0 +1,63 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import 'tailwindcss';
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  background: #080A10;
+  color: #E2E8F0;
+  font-family: 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #1E2534 transparent;
+}
+*::-webkit-scrollbar { width: 5px; height: 5px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: #1E2534; border-radius: 3px; }
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slide-right {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes pulse-dot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.35; }
+  30%            { transform: translateY(-5px); opacity: 1; }
+}
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes progress-fill {
+  from { stroke-dashoffset: 200; }
+}
+
+.animate-fade-up  { animation: fade-up 0.35s ease-out both; }
+.animate-slide-right { animation: slide-right 0.3s ease-out both; }
+
+.dot-1 { animation: pulse-dot 1.3s ease-in-out 0.0s infinite; }
+.dot-2 { animation: pulse-dot 1.3s ease-in-out 0.2s infinite; }
+.dot-3 { animation: pulse-dot 1.3s ease-in-out 0.4s infinite; }
+
+.ring-animate { animation: progress-fill 1s ease-out; }
+
+.font-display { font-family: 'Outfit', sans-serif; }
+.font-mono    { font-family: 'JetBrains Mono', monospace; }
+
+/* Gradient mesh background */
+.bg-mesh {
+  background: #080A10;
+  background-image:
+    radial-gradient(ellipse 800px 500px at 20% 10%, rgba(79, 126, 255, 0.05) 0%, transparent 60%),
+    radial-gradient(ellipse 600px 400px at 80% 80%, rgba(15, 217, 155, 0.04) 0%, transparent 60%);
+}

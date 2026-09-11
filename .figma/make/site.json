@@ -1,0 +1,10 @@
+{
+  "description": "This web application offers an intuitive platform for users to manage projects efficiently, enhancing collaboration and productivity with modern design.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
